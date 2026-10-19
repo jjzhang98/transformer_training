@@ -1,0 +1,176 @@
+# =============================================================================
+# 多实验训练配置文件
+# =============================================================================
+# 用法:
+#   1. 统一入口运行:
+#      python train_runner.py                          # 交互式选择实验
+#      python train_runner.py --id 1                   # 运行第1个实验
+#      python train_runner.py --id 1 2 3               # 顺序运行多个实验
+#      SLURM_ARRAY_TASK_ID=1 python train_runner.py    # SLURM array 模式
+#
+#   2. 自动生成独立脚本:
+#      python generate_runners.py                      # 生成 python_train_runner_XXXXXX.py
+#
+#   3. SLURM 提交:
+#      ./submit_all.sh                                 # 自动分组提交
+#
+#   4. 本地调试:
+#      TARGET=local ./submit_all.sh                    # 本地运行所有实验
+#      TARGET=local ID=3 ./submit_all.sh               # 本地只跑实验3
+# =============================================================================
+#
+# HPO 配置:
+#   shared_hpo 定义全局 HPO 参数（方法、trial次数、搜索空间等）
+#   搜参空间统一使用 tuner.py 中 get_default_search_space() 定义的默认空间
+#   shared_hpo.enabled 控制所有实验是否启用搜参 (true/false)
+#
+#   enabled: false → 直接训练
+#   enabled: true  → 使用 shared_hpo 参数 + 默认搜索空间进行搜参
+# =============================================================================
+
+# 共享数据配置 (所有实验共用)
+shared_data:
+  data_root: "../ResampleData"
+  date_range: "20240506-20240530"
+  train_ratio: 0.5
+  val_ratio: 0.25
+  factor_list: null
+  y_list:
+    - "period_return_HIGH_weight1"
+  normalize: "group"
+  winsorize_std: 0
+
+# 共享 HPO 配置 (所有实验共用, 搜参空间由 tuner.py 中的 get_default_search_space 提供)
+shared_hpo:
+  enabled: true                # true=所有实验都搜参, false=所有实验都直接训练
+  method: "optuna"              # "random" | "grid" | "optuna"
+  n_trials: 30                  # 搜索次数 (grid 忽略此参数)
+  metric: "auto"                # "auto" 自动按模型类型选择, 或指定如 "val_ic"
+  direction: "maximize"         # "maximize" | "minimize"
+  seed: 42
+  save_dir: "hpo_output"
+  disable_torch_compile: true
+  optuna_startup_trials: 1     # Optuna TPE 启动前的随机试验次数
+  optuna_gamma: 0.3            # TPE 探索/开发平衡比，(0, 1]，不填则用默认 0.25
+
+# 实验列表 (每个实验对应一个 SLURM array task)
+# use_gpu: true  -> 深度学习模型, 使用 commoncpu,commongpu 分区并申请 GPU
+# use_gpu: false -> 非深度学习模型, 使用 commoncpu,new_conf 分区, 不申请 GPU
+experiments:
+#  - name: "listnet_soft_RankBeforeSm_GroupedNorm"
+#    use_gpu: true
+#    models:
+#      - type: "mlp"
+#        name: "mlp"
+#        params:
+#          hidden_sizes: [256, 128, 64]
+#          dropout: 0.1
+#    training:
+#      epochs: 100
+#      batch_size: 4096
+#      early_stopping_patience: 20
+#      learning_rate: 1.0e-4
+#      device: "auto"
+#      min_delta: 0
+#      loss_type: "listnet"
+#      min_epochs: 10
+#      rank_before_softmax: true
+#      topk: 1
+#      use_hard_label: false
+#    output:
+#      save_dir: "output"
+#      experiment_name: "listnet_soft_RankBeforeSm_GroupedNorm"
+#      upload_to_hdfs: true
+
+  - name: "listmle"
+    use_gpu: true
+    models:
+      - type: "mlp"
+        name: "mlp"
+        params:
+          hidden_sizes: [256, 128, 64]
+          dropout: 0.1
+    training:
+      epochs: 100
+      batch_size: 4096
+      early_stopping_patience: 20
+      learning_rate: 1.0e-4
+      device: "auto"
+      min_delta: 0
+      loss_type: "listmle"
+      min_epochs: 10
+      rank_before_softmax: false
+      topk: 1
+      use_hard_label: false
+    output:
+      save_dir: "output"
+      experiment_name: "listmle"
+      upload_to_hdfs: true
+
+#  - name: "listnet_top1_hard_GroupedNorm"
+#    use_gpu: true
+#    models:
+#      - type: "mlp"
+#        name: "mlp"
+#        params:
+#          hidden_sizes: [256, 128, 64]
+#          dropout: 0.1
+#    training:
+#      epochs: 100
+#      batch_size: 4096
+#      early_stopping_patience: 20
+#      learning_rate: 1.0e-4
+#      device: "auto"
+#      min_delta: 0
+#      loss_type: "listnet"
+#      min_epochs: 10
+#      rank_before_softmax: true
+#      topk: 1
+#      use_hard_label: true
+#    output:
+#      save_dir: "output"
+#      experiment_name: "listnet_top1_hard_GroupedNorm"
+#      upload_to_hdfs: true
+
+  - name: "transformer_mle"
+    use_gpu: true
+    models:
+      - type: "transformer"
+        name: "transformer"
+    training:
+      epochs: 100
+      batch_size: 4096
+      early_stopping_patience: 20
+      learning_rate: 1.0e-4
+      device: "auto"
+      min_delta: 0
+      loss_type: "listmle"
+      min_epochs: 10
+      rank_before_softmax: true
+      topk: 1
+      use_hard_label: false
+    output:
+      save_dir: "output"
+      experiment_name: "transformer_mle"
+      upload_to_hdfs: true
+
+#  - name: "lambdamart_ranking"
+#    use_gpu: false
+#    models:
+#      - type: "lambdamart"
+#        name: "lambdamart"
+#        params:
+#          num_leaves: 31
+#          learning_rate: 0.1
+#    training:
+#      epochs: 100
+#      early_stopping_patience: 20
+#      learning_rate: 0.1
+#      device: "cpu"
+#      min_delta: 0
+#      min_epochs: 10
+#      topk: 1
+#    output:
+#      save_dir: "output"
+#      experiment_name: "lambdamart_ranking"
+#      upload_to_hdfs: false
